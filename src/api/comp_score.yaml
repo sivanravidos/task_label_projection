@@ -1,0 +1,19 @@
+namespace: "metrics"
+info:
+  type: utils
+  type_info:
+    label: Util
+    summary: A utility
+    description: |
+arguments:
+  - name: "--input_score"
+    __merge__: file_score.yaml
+    direction: input
+    required: true
+test_resources:
+  - path: /resources_test/task_label_projection/cxg_immune_cell_atlas
+    dest: resources_test/task_label_projection/cxg_immune_cell_atlas
+  - type: python_script
+    path: /common/component_tests/check_config.py
+  - type: python_script
+    path: /common/component_tests/run_and_check_output.py
