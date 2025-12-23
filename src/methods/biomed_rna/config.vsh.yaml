@@ -36,17 +36,32 @@ resources:
 engines:
   - type: docker
     image: openproblems/base_pytorch_nvidia:1
+    #image: pytorch/pytorch:1.12.1-cuda11.3-cudnn8-runtime
+    #image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-python3.11
+    #image: pytorch/pytorch:2.0.1-cuda11.8-cudnn8-python3.10
+    #image: pytorch/pytorch:2.x-cuda11.8-python3.10
+    #image: pytorch/pytorch:1.10.2-cuda11.2-cudnn8-python3.9
     setup:
+      # - type: apt
+      #   packages:
+      #     - procps
+      #     - git
       - type: python
-        # packages:
         #   - git+https://${GITHUB_TOKEN}@github.com/BiomedSciAI/biomed-multi-omic.git
       - type: docker
         run: |
-          cd /opt && git clone https://github.com/BiomedSciAI/biomed-multi-omic.git
-          pip install /opt/biomed-multi-omic
+          cd /opt && git clone --branch train_and_predict https://github.com/BiomedSciAI/biomed-multi-omic.git && pip install /opt/biomed-multi-omic
           
+        #2 cd /opt && git clone https://github.com/BiomedSciAI/biomed-multi-omic.git && pip install /opt/biomed-multi-omic && pip install -U "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+        
+        #pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
+        #pip install -U "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+        #pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
         #pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-          
+
+
         # cd /opt && git clone https://@github.com/BiomedSciAI/biomed-multi-omic.git
         # cd biomed-multi-omic && pip install .
         # echo "export BIOMED_ROOT=/opt/biomed-multi-omic" >> /etc/profile
@@ -66,4 +81,4 @@ runners:
   - type: nextflow
     directives: 
       label: [midtime, highmem, highcpu, gpu]
-      containerOptions: "-v $HOME/clearml.conf:/root/clearml.conf:ro"
+      containerOptions: "--gpus all -v $HOME/clearml.conf:/root/clearml.conf:ro"

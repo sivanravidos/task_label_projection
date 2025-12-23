@@ -6,13 +6,29 @@ import numpy as np
 import sys
 from pathlib import Path
 
-
-from hydra import initialize, compose, initialize_config_dir
-
+from hydra import compose, initialize_config_dir
 from scipy import sparse
 from sklearn.model_selection import train_test_split
 
 from bmfm_targets.tasks.scbert.scbert_main import main
+
+
+def refactor_adata(adata):
+
+    if "counts" in adata.layers:
+        print("Moving layers['counts'] → .X", flush=True)
+        adata.X = adata.layers["counts"].copy()
+    if "feature_name" in adata.var.columns:
+        if adata.var.shape[0] != adata.X.shape[1]:
+            raise ValueError(
+                f"var has {adata.var.shape[0]} rows but X has {adata.X.shape[1]} columns"
+            )
+
+        adata.var_names = adata.var["feature_name"].astype(str)
+        adata.var_names_make_unique()
+    else:
+        raise ValueError("var['feature_name'] not found — cannot set var_names")
+
 
 ## VIASH START
 par = {
@@ -29,7 +45,8 @@ meta = {
 import torch
 print(f"torch.cuda.is_available():{torch.cuda.is_available()}")
 print(f"torch.backends.mps.is_available():{torch.backends.mps.is_available()}")
-
+print(f"CUDA version: {torch.version.cuda}")
+print(f"Number of GPUs: {torch.cuda.device_count()}")
 
 
 import bmfm_targets
@@ -39,17 +56,16 @@ package_location = Path(bmfm_targets.__file__).parent
 print(f"Package location: {package_location}")
 print(f"Package parent: {package_location.parent}")
 
-# Check parent directory
-run_in_parent = package_location.parent / "run"
-print(f"run folder in parent: {run_in_parent.exists()}")
+# run_in_parent = package_location.parent / "run"
+# print(f"run folder in parent: {run_in_parent.exists()}")
 
 BIO_MED_ROOT = str(package_location.parent / "run")
 
 print("Load input data", flush=True)
 input_train = ad.read_h5ad(par['input_train'])
 input_test = ad.read_h5ad(par['input_test'])
-print(input_train.obs.columns)
-print(input_test.obs.columns)
+# print(input_train.obs.columns)
+# print(input_test.obs.columns)
 
 print("Splitting train into train/dev", flush=True)
 train_idx, dev_idx = train_test_split(
@@ -60,46 +76,26 @@ train_idx, dev_idx = train_test_split(
 )
 input_train.obs['split'] = 'train'
 input_train.obs.loc[input_train.obs.index[dev_idx], 'split'] = 'dev'
-input_test.obs['split'] = 'test'
 
-if "counts" in input_train.layers:
-    print("Moving layers['counts'] → .X", flush=True)
-    input_train.X = input_train.layers["counts"].copy()
-if "counts" in input_test.layers:
-    print("Moving layers['counts'] → .X", flush=True)
-    input_test.X = input_test.layers["counts"].copy()
 
-if "feature_name" in input_train.var.columns:
-    if input_train.var.shape[0] != input_train.X.shape[1]:
-        raise ValueError(
-            f"var has {input_train.var.shape[0]} rows but X has {input_train.X.shape[1]} columns"
-        )
+refactor_adata(input_train)
+refactor_adata(input_test)
 
-    input_train.var_names = input_train.var["feature_name"].astype(str)
-    input_train.var_names_make_unique()
-else:
-    raise ValueError("var['feature_name'] not found — cannot set var_names")
-
-if "feature_name" in input_test.var.columns:
-    if input_test.var.shape[0] != input_test.X.shape[1]:
-        raise ValueError(
-            f"var has {input_test.var.shape[0]} rows but X has {input_test.X.shape[1]} columns"
-        )
-
-    input_test.var_names = input_test.var["feature_name"].astype(str)
-    input_test.var_names_make_unique()
-else:
-    raise ValueError("var['feature_name'] not found — cannot set var_names")
-
-print("\nSplit counts:")
+print("\ntrain file split counts:")
 print(input_train.obs["split"].value_counts())
 print(input_train.obs.columns)
-print("\cell_type counts:")
+print("\train file cell_type counts:")
 print(input_train.obs["label"].value_counts())
-print("Writing unified datasets to datasets_unified.h5ad", flush=True)
+
+print("Writing processed train to input_train_processed.h5ad", flush=True)
 if not sparse.issparse(input_train.X):
     input_train.X = sparse.csr_matrix(input_train.X)
-input_train.write_h5ad("dataset_unified.h5ad", compression="gzip")
+input_train.write_h5ad("input_train_processed.h5ad", compression="gzip")
+
+print("Writing processed test to input_test_processed.h5ad", flush=True)
+if not sparse.issparse(input_test.X):
+    input_test.X = sparse.csr_matrix(input_test.X)
+input_test.write_h5ad("input_test_processed.h5ad", compression="gzip")
 
 print("Check contents of workspace folder")
 for item in Path("/workspace").iterdir():
@@ -117,31 +113,34 @@ with initialize_config_dir(
     cfg = compose(
         config_name="finetune",
         overrides=[
+            "task=train",
             "label_column_name=label",
             "split_column_name=split",
-            f"input_file=dataset_unified.h5ad",
+            "input_file=input_train_processed.h5ad",
             "working_dir=.",
             # "++data_module.rda_transform=auto_align",
             # "data_module.log_normalize_transform=false",
             "data_module.max_length=16",
-            "checkpoint=ibm-research/biomed.rna.bert.110m.mlm.rda.v1",
-            #"trainer.losses[0].name=focal",
             "data_module.batch_size=1",
             "data_module.num_workers=4",
+            "data_module.collation_strategy=multitask",
+            "trainer.losses.0.name=focal",
+            "checkpoint=ibm-research/biomed.rna.bert.110m.mlm.rda.v1",
             "max_epochs=1",
             "accelerator=cpu",
+            "task.precision=32",
             "+track_clearml.project_name=bmfm_targets/open_problems",
             "+track_clearml.task_name=label_projection_immune_cell_atlas_test",
+            "+checkpoints_every_n_train_steps=null"
+
 
         ],
     )
 
 main(cfg)
-print("Check contents of workspace folder")
-for item in Path("/workspace").iterdir():
-    print(item)
-
-print("Make predictions", flush=True)
+# print("Check contents of workspace folder")
+# for item in Path("/workspace").iterdir():
+#     print(item)
 
 with initialize_config_dir(
     version_base="1.2",
@@ -150,22 +149,39 @@ with initialize_config_dir(
     cfg = compose(
         config_name="predict",
         overrides=[
-            "label_column_name=label",
-            "split_column_name=split",
-            f"input_file=unified_dataset.h5ad",
+            "target_column_name=label",
+            f"input_file=input_test_processed.h5ad",
             "working_dir=.",
             # "++data_module.rda_transform=auto_align",
             # "data_module.log_normalize_transform=false",
-            "data_module.max_length=16",
-            "checkpoint=ibm-research/biomed.rna.bert.110m.mlm.rda.v1",
-            "accelerator=cpu"
-
+            "data_module.batch_size=1",
+            "data_module.num_workers=4",
+            "data_module.collation_strategy=multitask",
+            "checkpoint=/workspace/last.ckpt",
+            "accelerator=cpu",
+            "task.precision=32",
+            "+track_clearml.project_name=bmfm_targets/open_problems",
+            "+track_clearml.task_name=label_projection_immune_cell_atlas_test",
         ],
     )
 
 main(cfg)
 
-# preds = 
+
+predictions = pd.read_csv("predictions.csv")
+# predictions.csv columns are "Unamed: 0, label
+predictions = predictions.rename(columns={"Unnamed: 0": "cell_id", "label": "label_pred"}).set_index("cell_id")
+output_adata = ad.AnnData(
+    obs=predictions,
+    var=input_test.var[[]],
+        uns={
+            "dataset_id": input_test.uns["dataset_id"],
+            "normalization_id": input_test.uns["normalization_id"],
+            "method_id": meta["name"],
+        },
+    )
+
+output_adata.write_h5ad(par["output"], compression="gzip")
 
 # print("Create SCANVI model and train it on fully labelled reference dataset", flush=True)
 # sca.models.SCVI.setup_anndata(
@@ -209,3 +225,5 @@ main(cfg)
 
 # print("Write output to file", flush=True)
 # output.write_h5ad(par["output"], compression="gzip")
+
+
