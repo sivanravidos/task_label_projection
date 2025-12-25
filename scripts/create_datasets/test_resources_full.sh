@@ -8,15 +8,24 @@ cd "$REPO_ROOT"
 
 set -e
 
+#export HDF5_USE_FILE_LOCKING=FALSE
+
 RAW_DATA=resources_test/common
 DATASET_DIR=resources_test/task_label_projection
-#RAW_DATA=resources/task_label_projection
-#DATASET_DIR=resources/task_label_projection
+# RAW_DATA=resources/task_label_projection
+# DATASET_DIR=resources/task_label_projection
 
 mkdir -p $DATASET_DIR
 
-# process dataset
+# docker on lsf-gpu3 fixes 
+export HOST_UID=$(id -u)
+export HOST_GID=$(id -g)
+export HOME=/tmp/home
+mkdir -p $HOME
+echo $HOST_UID $HOST_GID
 
+
+# process dataset
 # echo Running process_dataset
 # nextflow run . \
 #   -main-script target/nextflow/workflows/process_datasets/main.nf \
@@ -30,21 +39,23 @@ mkdir -p $DATASET_DIR
 #   --output_state '$id/state.yaml' \
 #   -c common/nextflow_helpers/labels_ci.config
 
-# # #run one method
-
-viash run src/methods/biomed_rna/config.vsh.yaml --\
+#run one method
+viash  run src/methods/biomed_rna/config.vsh.yaml  --\
     --input_train $DATASET_DIR/cxg_immune_cell_atlas/train.h5ad \
     --input_test $DATASET_DIR/cxg_immune_cell_atlas/test.h5ad \
     --output $DATASET_DIR/cxg_immune_cell_atlas/prediction.h5ad
+#echo "Exit code: $?"
 
 #run one metric
-viash run src/metrics/f1/config.vsh.yaml -- \
+viash run src/metrics/f1/config.vsh.yaml --  \
     --input_prediction $DATASET_DIR/cxg_immune_cell_atlas/prediction.h5ad \
     --input_solution $DATASET_DIR/cxg_immune_cell_atlas/solution.h5ad \
     --output $DATASET_DIR/cxg_immune_cell_atlas/score.h5ad
 
 viash run src/utils/print_score/config.vsh.yaml -- \
     --input_score $DATASET_DIR/cxg_immune_cell_atlas/score.h5ad \
+
+echo "done."
 
 # # only run this if you have access to the openproblems-data bucket
 # aws s3 sync --profile op \

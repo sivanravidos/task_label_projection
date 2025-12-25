@@ -1,7 +1,17 @@
 __merge__: /src/api/comp_method.yaml
 name: "biomed_rna"
 label: BIOMED_RNA
-# summary: "scANVI predicts cell type labels for unlabelled test data by leveraging cell type labels, modelling uncertainty and using deep neural networks with stochastic optimization."
+summary: "BIOMED-RNA is a large transformer model trained on large scRNA data that enalbles fine tuninign an predictions of varioud scRNA related tasks."
+description: |
+  TBD
+references:
+  doi:
+    - 10.48550/arXiv.2506.14861
+links:
+  repository: https://github.com/BiomedSciAI/biomed-multi-omic
+  documentation: https://github.com/BiomedSciAI/biomed-multi-omic
+
+
 # description: |
 #   single-cell ANnotation using Variational Inference is a
 #   semi-supervised variant of the scVI(Lopez et al. 2018) algorithm. Like scVI,
@@ -10,12 +20,7 @@ label: BIOMED_RNA
 #   transcriptomics measurements. However, scANVI also leverages cell type labels
 #   in the generative modelling. In this approach, scANVI is used to predict the
 #   cell type labels of the unlabelled test data.
-# references:
-#   doi:
-#     - 10.1101/2020.07.16.205997
-# links:
-#   repository: https://github.com/scverse/scvi-tools
-#   documentation: https://scarches.readthedocs.io/en/latest/scanvi_surgery_pipeline.html
+
 # info:
 #   v1:
 #     path: openproblems/tasks/label_projection/methods/scvi_tools.py
@@ -30,55 +35,45 @@ label: BIOMED_RNA
 #     type: integer
 #     description: "The number of HVG genes to subset to."
 
+# requirements:
+#     memory: 512GB     
+#     cpus: 32
+
 resources:
   - type: python_script
     path: script.py
+  - type: file
+    path: clearml.conf
+    dest: clearml.conf
 engines:
   - type: docker
     image: openproblems/base_pytorch_nvidia:1
-    #image: pytorch/pytorch:1.12.1-cuda11.3-cudnn8-runtime
-    #image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-python3.11
-    #image: pytorch/pytorch:2.0.1-cuda11.8-cudnn8-python3.10
-    #image: pytorch/pytorch:2.x-cuda11.8-python3.10
-    #image: pytorch/pytorch:1.10.2-cuda11.2-cudnn8-python3.9
     setup:
-      # - type: apt
-      #   packages:
-      #     - procps
-      #     - git
       - type: python
-        #   - git+https://${GITHUB_TOKEN}@github.com/BiomedSciAI/biomed-multi-omic.git
       - type: docker
         run: |
-          cd /opt && git clone --branch train_and_predict https://github.com/BiomedSciAI/biomed-multi-omic.git && pip install /opt/biomed-multi-omic
-          
-        #2 cd /opt && git clone https://github.com/BiomedSciAI/biomed-multi-omic.git && pip install /opt/biomed-multi-omic && pip install -U "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-        
-        #pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
-        #pip install -U "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-        #pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-        #pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-
-        # cd /opt && git clone https://@github.com/BiomedSciAI/biomed-multi-omic.git
-        # cd biomed-multi-omic && pip install .
-        # echo "export BIOMED_ROOT=/opt/biomed-multi-omic" >> /etc/profile
-        
-        #"git clone https://${GITHUB_TOKEN}@github.com/BiomedSciAI/biomed-multi-omic.git"
-
-        # chat suggest this for mac
-          # if [ "$(uname -s)" = "Linux" ]; then
-          #   pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-          # else
-          #   pip install -U jax jaxlib
-          # fi
-    
-
+          cd /opt && git clone https://github.com/BiomedSciAI/biomed-multi-omic.git && pip install /opt/biomed-multi-omic
+  
 runners:
-  - type: executable
+  - type: executable    
+    docker_run_args: >
+      --gpus 1 
+      --shm-size=128g
+      --stop-timeout 120  # Gives it 2 minutes to shut down instead of 10s
+    # -u ${HOST_UID}:${HOST_GID}
+    # -e HOME=/tmp/home
+    # -e PYTHONUNBUFFERED=1
+    # -e HDF5_USE_FILE_LOCKING=FALSE
+    # -e CUDA_VISIBLE_DEVICES=0
+    #  -e MPLCONFIGDIR=/tmp/matplotlib
+    # -e NUMBA_CACHE_DIR=/tmp/numba_cache
   - type: nextflow
     directives: 
       label: [midtime, highmem, highcpu, gpu]
-      containerOptions: "--gpus all -v $HOME/clearml.conf:/root/clearml.conf:ro"
+      #containerOptions: "--gpus all"
+      # containerOptions: >
+      #   --gpus 1
+      #   -u ${HOST_UID}:${HOST_GID}
+      #   -e PYTHONUNBUFFERED=1
+      #   -e HDF5_USE_FILE_LOCKING=FALSE
+      #   -e CUDA_VISIBLE_DEVICES=0
